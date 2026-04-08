@@ -1,0 +1,420 @@
+# ═══════════════════════════════════════════════════════════════════
+# SALT Test Harness — Handler Registry
+# ═════════════════════════════════════════════════��═════════════════
+# 23 enterprise-realistic handlers across 3 standard objects.
+# Each handler represents a real business process found in
+# enterprise Salesforce implementations.
+#
+# Handler count: Account(7) + Contact(4) + Opportunity(12) = 23
+# Query merge groups: 4 distinct merge keys with 2-4 handlers each
+# Cascade depth: up to 4 levels on lead conversion path
+
+Account:
+  before_insert:
+    - handler: AccountDefaultsHandler
+      order: 10
+      interfaces: []
+      description: >
+        Sets default field values on new accounts: Type='Prospect',
+        Industry='Technology', Description auto-populated.
+        Universal — every org defaults core account fields on creation.
+      query_key: ~
+      dml_target: ~
+      business_owner: Sales Operations
+
+    - handler: AccountClassificationHandler
+      order: 20
+      interfaces: []
+      description: >
+        Derives Account.Rating from AnnualRevenue thresholds:
+        <100K='Cold', 100K-1M='Warm', >1M='Hot'.
+        Universal — revenue-based account tiering/scoring.
+      query_key: ~
+      dml_target: ~
+      business_owner: Sales Strategy
+
+  before_update:
+    - handler: AccountClassificationHandler
+      order: 20
+      interfaces: []
+      description: >
+        Re-derives Rating when AnnualRevenue changes. Same logic as
+        before_insert, applied on update to keep Rating in sync
+        with pipeline changes cascaded from Opportunity handlers.
+      query_key: ~
+      dml_target: ~
+      business_owner: Sales Strategy
+
+  after_update:
+    - handler: AccountContactCascadeHandler
+      order: 10
+      interfaces: [IRecordFilter, IQueryAware, IDmlAware]
+      filter: FieldChanged(BillingCity)
+      description: >
+        When Account.BillingCity changes, pushes new city to all
+        child Contact.MailingCity records. Standard address data
+        quality cascade — ensures contact addresses stay in sync
+        with parent account.
+      query_key: Contact|AccountId
+      dml_target: Contact (MailingCity)
+      business_owner: Data Quality
+
+    - handler: AccountOwnerReassignHandler
+      order: 15
+      interfaces: [IRecordFilter, IQueryAware, IDmlAware]
+      filter: FieldChanged(OwnerId)
+      description: >
+        When Account.OwnerId changes (territory transfer), reassigns
+        all child Contacts to the new owner. Salesforce only cascades
+        owner changes to open Cases, not Contacts — every enterprise
+        org builds this trigger for Contact ownership parity.
+      query_key: Contact|AccountId
+      dml_target: Contact (OwnerId)
+      business_owner: Sales Operations
+
+    - handler: AccountDoNotContactHandler
+      order: 16
+      interfaces: [IRecordFilter, IQueryAware, IDmlAware]
+      filter: FieldChanged(Fax) to 'DO_NOT_CONTACT'
+      description: >
+        When Account is flagged as Do Not Contact (Fax field used as
+        proxy for custom checkbox), sets DoNotCall=true on all child
+        Contacts. Legal/compliance requirement in regulated industries
+        (financial services, healthcare, telecom).
+      query_key: Contact|AccountId
+      dml_target: Contact (DoNotCall)
+      business_owner: Legal/Compliance
+
+    - handler: AccountOpportunityCascadeHandler
+      order: 20
+      interfaces: [IRecordFilter, IQueryAware, IDmlAware]
+      filter: FieldChanged(Type) where new value = 'Customer'
+      description: >
+        When Account.Type changes to 'Customer', advances all
+        Prospecting Opportunities to Qualification stage. Automates
+        the sales process — when an account is promoted, its pipeline
+        should reflect the new relationship status.
+      query_key: Opportunity|AccountId
+      dml_target: Opportunity (StageName)
+      business_owner: Sales Process
+
+    - handler: AccountCreditHoldOppFreezeHandler
+      order: 25
+      interfaces: [IRecordFilter, IQueryAware, IDmlAware]
+      filter: FieldChanged(Rating) where new value = 'Cold'
+      description: >
+        When Account.Rating drops to 'Cold' (credit hold), marks all
+        open Opportunities with 'CREDIT HOLD' in Description. Finance/AR
+        teams require deal freeze on delinquent accounts to prevent
+        sales reps from progressing deals.
+      query_key: Opportunity|AccountId
+      dml_target: Opportunity (Description)
+      business_owner: Finance/AR
+
+  merge_groups:
+    Contact|AccountId:
+      handlers:
+        [
+          AccountContactCascadeHandler,
+          AccountOwnerReassignHandler,
+          AccountDoNotContactHandler
+        ]
+      count: 3
+      note: >
+        Three independent teams (data quality, sales ops, compliance) each need
+        Contact data when Account changes. Owned by different departments with
+        no coordination — SALT merges their queries automatically.
+    Opportunity|AccountId:
+      handlers:
+        [AccountOpportunityCascadeHandler, AccountCreditHoldOppFreezeHandler]
+      count: 2
+      note: >
+        Sales process and finance independently need Opportunity data on Account changes.
+
+Contact:
+  before_insert:
+    - handler: ContactDefaultsHandler
+      order: 10
+      interfaces: []
+      description: >
+        Normalizes Contact.Phone (prepends '+1-' for non-international
+        format) and defaults MailingCity to 'Default City' when blank.
+        Standard data quality normalization on contact creation.
+      query_key: ~
+      dml_target: ~
+      business_owner: Data Quality
+
+  after_insert:
+    - handler: ContactCountRollupHandler
+      order: 20
+      interfaces: [IQueryAware, IDmlAware]
+      description: >
+        Counts all Contacts on the parent Account and updates
+        Account.NumberOfEmployees (used as contact count proxy).
+        Rollup summaries are the #1 use case for Salesforce triggers.
+      query_key: Contact|AccountId
+      dml_target: Account (NumberOfEmployees)
+      business_owner: Sales Operations
+
+    - handler: ContactAccountSyncHandler
+      order: 30
+      interfaces: [IQueryAware, IDmlAware, IRecursionAware]
+      recursion_fields: [Contact.Phone, Contact.AccountId]
+      description: >
+        Syncs Contact.Phone to Account.Phone (primary contact phone).
+        IRecursionAware prevents infinite loop when Account update
+        cascades back to Contact update — field-hash guard detects
+        that Phone+AccountId haven't changed and skips re-entry.
+      query_key: Account|Id
+      dml_target: Account (Phone)
+      business_owner: Sales Operations
+
+    - handler: ContactLeadSourceHandler
+      order: 40
+      interfaces: [IQueryAware, IDmlAware]
+      description: >
+        Updates Account.AccountSource with the most recent Contact's
+        LeadSource for lead-to-account attribution reporting. Marketing
+        teams need to know which lead source brought contacts into
+        existing accounts.
+      query_key: Account|Id
+      dml_target: Account (AccountSource)
+      business_owner: Marketing Operations
+
+  merge_groups:
+    Account|Id:
+      handlers: [ContactAccountSyncHandler, ContactLeadSourceHandler]
+      count: 2
+      note: >
+        Sales ops (phone sync) and marketing (attribution) both need
+        parent Account data when a Contact is created.
+
+Opportunity:
+  before_insert:
+    - handler: OpportunityStageHandler
+      order: 10
+      interfaces: [IRecordFilter]
+      filter: Always applicable on insert
+      description: >
+        Sets default CloseDate (today+30) and derives Probability from
+        StageName (Prospecting=10%, Qualification=20%, etc.).
+        Universal sales process enforcement.
+      query_key: ~
+      dml_target: ~
+      business_owner: Sales Process
+
+    - handler: OpportunityNextStepHandler
+      order: 20
+      interfaces: []
+      description: >
+        Derives NextStep from StageName ('Prospecting' -> 'Schedule
+        discovery call', 'Negotiation/Review' -> 'Send final contract
+        for review', etc.). Keeps sales process guidance consistent.
+      query_key: ~
+      dml_target: ~
+      business_owner: Sales Enablement
+
+  before_update:
+    - handler: OpportunityStageHandler
+      order: 10
+      interfaces: [IRecordFilter]
+      filter: FieldChanged(StageName)
+      description: >
+        Re-derives Probability when StageName changes. Same stage-to-
+        probability mapping as before_insert.
+      query_key: ~
+      dml_target: ~
+      business_owner: Sales Process
+
+    - handler: OpportunityNextStepHandler
+      order: 20
+      interfaces: []
+      description: >
+        Re-derives NextStep when StageName changes.
+      query_key: ~
+      dml_target: ~
+      business_owner: Sales Enablement
+
+  after_insert:
+    - handler: OpportunityContactRoleHandler
+      order: 20
+      interfaces: [IQueryAware, IDmlAware]
+      description: >
+        Finds the primary Contact on the Account and creates an
+        OpportunityContactRole with Role='Decision Maker'.
+        Auto-creating contact roles is universal in sales orgs.
+      query_key: Contact|AccountId
+      dml_target: OpportunityContactRole (new)
+      business_owner: Sales Operations
+
+    - handler: OpportunityTeamNotifyHandler
+      order: 22
+      interfaces: [IQueryAware, IDmlAware]
+      description: >
+        Finds contacts on the Account and creates a notification Task
+        for the account team alerting them to the new deal. Sales
+        management needs immediate pipeline visibility.
+      query_key: Contact|AccountId
+      dml_target: Task (new)
+      business_owner: Sales Management
+
+    - handler: OpportunityApprovalContactHandler
+      order: 23
+      interfaces: [IRecordFilter, IQueryAware, IDmlAware]
+      filter: Amount >= 100,000
+      description: >
+        For high-value deals, identifies the decision-maker contact
+        (VP/Director/Chief title) and creates an approval routing Task
+        for the deal desk. Standard enterprise deal desk workflow.
+      query_key: Contact|AccountId
+      dml_target: Task (new)
+      business_owner: Deal Desk
+
+    - handler: OpportunityCommissionHandler
+      order: 25
+      interfaces: [IQueryAware, IDmlAware]
+      description: >
+        Finds the primary sales contact on the Account and creates a
+        commission processing Task for finance. Commission tracking is
+        universal in sales-driven orgs.
+      query_key: Contact|AccountId
+      dml_target: Task (new)
+      business_owner: Finance
+
+    - handler: OpportunityNotificationHandler
+      order: 30
+      interfaces: [IRecordFilter, IDmlAware]
+      filter: Amount >= 100,000
+      description: >
+        For high-value Opportunities, creates a review Task. On
+        after_update, also fires when StageName changes to 'Closed Won'.
+        Standard sales management alerting.
+      query_key: ~
+      dml_target: Task (new)
+      business_owner: Sales Management
+
+    - handler: OpportunityPipelineRollupHandler
+      order: 40
+      interfaces: [IRecordFilter, IQueryAware, IDmlAware]
+      filter: Always on insert; FieldChanged(Amount or StageName) on update
+      description: >
+        Sums open Opportunity Amounts (excluding Closed Lost) and
+        updates Account.AnnualRevenue. Pipeline rollup to Account
+        is universal in sales orgs.
+      query_key: Opportunity|AccountId
+      dml_target: Account (AnnualRevenue)
+      business_owner: Revenue Operations
+
+    - handler: OpportunityCompetitorAnalysisHandler
+      order: 45
+      interfaces: [IRecordFilter, IQueryAware, IDmlAware]
+      filter: Always on insert; FieldChanged(StageName) on update
+      description: >
+        Checks sibling Opportunities on the same Account. When 2+
+        deals are active simultaneously, creates a competitive
+        analysis Task. Enterprise sales intelligence.
+      query_key: Opportunity|AccountId
+      dml_target: Task (new)
+      business_owner: Sales Strategy
+
+    - handler: OpportunityForecastReconcileHandler
+      order: 46
+      interfaces: [IRecordFilter, IQueryAware, IDmlAware]
+      filter: Always on insert; FieldChanged(StageName or Amount) on update
+      description: >
+        Calculates weighted pipeline (Amount * Probability/100) across
+        all open Opportunities and writes the forecast to Account.Description.
+        Finance and sales leadership need real-time forecast accuracy.
+      query_key: Opportunity|AccountId
+      dml_target: Account (Description)
+      business_owner: Finance/FP&A
+
+    - handler: OpportunityAccountTypeHandler
+      order: 50
+      interfaces: [IQueryAware, IDmlAware]
+      description: >
+        On first Opportunity created for an Account, promotes
+        Account.Type from 'Prospect' to 'Customer'. Common in orgs
+        that automate the prospect-to-customer lifecycle.
+      query_key: Account|Id
+      dml_target: Account (Type)
+      business_owner: Sales Operations
+
+    - handler: OpportunityTeamTaskHandler
+      order: 60
+      interfaces: [IDmlAware]
+      description: >
+        Creates a follow-up research Task for every new Opportunity.
+        Standard sales team workflow — ensures every new deal gets
+        background research initiated.
+      query_key: ~
+      dml_target: Task (new)
+      business_owner: Sales Enablement
+
+  after_update:
+    - handler: OpportunityNotificationHandler
+      order: 30
+      interfaces: [IRecordFilter, IDmlAware]
+      filter: Amount >= 100,000 and StageName changed to 'Closed Won'
+      description: >
+        Creates 'Closed Won' notification Task when a high-value deal closes.
+
+    - handler: OpportunityPipelineRollupHandler
+      order: 40
+      interfaces: [IRecordFilter, IQueryAware, IDmlAware]
+      filter: FieldChanged(Amount or StageName)
+      description: >
+        Recalculates pipeline rollup when Amount or Stage changes.
+        IRecordFilter is critical for cascade termination — when
+        AccountOpportunityCascadeHandler advances stage but Amount
+        stays the same, this handler fires (StageName changed).
+        But on subsequent cascade where nothing changed, it SKIPS.
+
+    - handler: OpportunityCompetitorAnalysisHandler
+      order: 45
+      interfaces: [IRecordFilter, IQueryAware, IDmlAware]
+      filter: FieldChanged(StageName)
+      description: >
+        Re-evaluates competitive landscape when deal stage changes.
+
+    - handler: OpportunityForecastReconcileHandler
+      order: 46
+      interfaces: [IRecordFilter, IQueryAware, IDmlAware]
+      filter: FieldChanged(StageName or Amount)
+      description: >
+        Reconciles weighted forecast when stage or amount changes.
+
+  merge_groups:
+    Contact|AccountId:
+      handlers:
+        [
+          OpportunityContactRoleHandler,
+          OpportunityTeamNotifyHandler,
+          OpportunityApprovalContactHandler,
+          OpportunityCommissionHandler
+        ]
+      count: 4
+      note: >
+        Four independent teams (sales ops, sales management, deal desk,
+        finance) each need Contact data when an Opp is created. This is
+        the highest natural merge density — 4 queries merged into 1 SOQL.
+    Opportunity|AccountId:
+      handlers:
+        [
+          OpportunityPipelineRollupHandler,
+          OpportunityCompetitorAnalysisHandler,
+          OpportunityForecastReconcileHandler
+        ]
+      count: 3
+      note: >
+        Revenue ops, sales strategy, and FP&A each need sibling Opp data.
+        3 queries merged into 1 SOQL on both after_insert and after_update.
+
+# ═══════════════════════════════════════════════════════════════════
+# Query Merge Summary
+# ═══════════════════════════════════════════════════════════════════
+# Total query-declaring handlers: 15
+# Total merge keys: 5 distinct keys
+# Total queries without merge: 15
+# Total queries with SALT merge: 6 (1 CMDT + 5 merged handler queries)
+# Merge savings: 9 SOQL per full cascade transaction
