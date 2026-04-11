@@ -8,9 +8,7 @@
 > aggregation and coordinated DML are the differentiators.
 
 The architectural validation for the cross-handler aggregation and
-Phase 4 batching choices lives in
-[`benchmarks/comparative-frameworks-2026-04-07.md`](benchmarks/comparative-frameworks-2026-04-07.md)
-and the head-to-head measured section of
+the head-to-head measured section of
 [`benchmarks/benchmark-report.md`](benchmarks/benchmark-report.md):
 SALT issues 45 % fewer SOQL than fflib/O'Hara and 62 % fewer than TAF
 on the same 23-handler workload, with comparable CPU and ~25 % fewer
