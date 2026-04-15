@@ -13,7 +13,7 @@ public inherited sharing class QueryBuilder {
 
   // handler/tag name validation — handler/tag identifier validation
   private static final Pattern IDENT_PATTERN = Pattern.compile('^[A-Za-z0-9_.]+$');
-  private static final String RESERVED_PREFIX = '__salt_';
+  private static final String RESERVED_PREFIX = 'salt_';
 
   public QueryBuilder(String handlerName) {
     if (handlerName == null || handlerName.length() == 0) {
@@ -35,7 +35,7 @@ public inherited sharing class QueryBuilder {
     }
     if (handlerName.toLowerCase().startsWith(RESERVED_PREFIX)) {
       throw new TriggerFrameworkException(
-        'QueryBuilder handler name may not start with reserved prefix __salt_ — got: ' +
+        'QueryBuilder handler name may not start with reserved prefix salt_ — got: ' +
           handlerName,
         handlerName,
         null,
@@ -110,7 +110,7 @@ public inherited sharing class QueryBuilder {
     }
     if (tagValue.toLowerCase().startsWith(RESERVED_PREFIX)) {
       throw new TriggerFrameworkException(
-        'tag may not start with reserved prefix __salt_ — got: ' + tagValue,
+        'tag may not start with reserved prefix salt_ — got: ' + tagValue,
         declaringHandler,
         null,
         'query-build'

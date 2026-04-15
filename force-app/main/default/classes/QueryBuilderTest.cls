@@ -39,7 +39,7 @@ private class QueryBuilderTest {
   static void queryBuilder_reservedPrefixHandlerNameThrows() {
     Boolean threw = false;
     try {
-      new QueryBuilder('__salt_reserved');
+      new QueryBuilder('salt_reserved');
     } catch (TriggerFrameworkException e) {
       threw = true;
       System.assert(e.getMessage().contains('reserved prefix'));
@@ -132,7 +132,7 @@ private class QueryBuilderTest {
     QueryBuilder qb = new QueryBuilder('TestHandler');
     Boolean threw = false;
     try {
-      qb.tag('__salt_reserved');
+      qb.tag('salt_reserved');
     } catch (TriggerFrameworkException e) {
       threw = true;
       System.assert(e.getMessage().contains('reserved prefix'));

@@ -5,7 +5,7 @@
  * Construction is via static factories which apply factory-time rejections
  * for unsupported field types and operator combinations:
  *
- *   - reserved __salt_ field name prefix          -> reject (bind safety)
+ *   - reserved salt_ field name prefix          -> reject (bind safety)
  *   - Currency field on multi-currency org        -> reject (no in-memory conversion)
  *   - EncryptedString field                       -> reject (cannot match in-memory)
  *   - Location field                              -> reject (geolocation matcher mismatch)
@@ -101,9 +101,9 @@ public inherited sharing class FieldFilter implements Predicate {
 
   private void applyFactoryRejections() {
     // handler/tag name validation — reserved bind/field prefix collision
-    if (fieldName != null && fieldName.toLowerCase().startsWith('__salt_')) {
+    if (fieldName != null && fieldName.toLowerCase().startsWith('salt_')) {
       throw new TriggerFrameworkException(
-        'FieldFilter rejects reserved __salt_ field name prefix: ' + fieldName
+        'FieldFilter rejects reserved salt_ field name prefix: ' + fieldName
       );
     }
 

@@ -28,9 +28,9 @@ public inherited sharing class QueryRequest {
   public static final String NULL_TAG_KEY = '__null';
 
   // Identifier validation (handler/tag name validation) — handler names and tags must match.
-  // Reserved bind/field prefix is '__salt_' (lowercase per BindContext).
+  // Reserved bind/field prefix is 'salt_' (lowercase per BindContext).
   private static final Pattern IDENT_PATTERN = Pattern.compile('^[A-Za-z0-9_.]+$');
-  private static final String RESERVED_PREFIX = '__salt_';
+  private static final String RESERVED_PREFIX = 'salt_';
 
   private final String mergeKey;
 
@@ -85,7 +85,7 @@ public inherited sharing class QueryRequest {
     }
     if (handlerName.toLowerCase().startsWith(RESERVED_PREFIX)) {
       throw new TriggerFrameworkException(
-        'declaringHandler may not start with reserved prefix __salt_ — got: ' +
+        'declaringHandler may not start with reserved prefix salt_ — got: ' +
           handlerName
       );
     }
@@ -105,7 +105,7 @@ public inherited sharing class QueryRequest {
     }
     if (tagValue.toLowerCase().startsWith(RESERVED_PREFIX)) {
       throw new TriggerFrameworkException(
-        'tag may not start with reserved prefix __salt_ — got: ' + tagValue
+        'tag may not start with reserved prefix salt_ — got: ' + tagValue
       );
     }
   }
