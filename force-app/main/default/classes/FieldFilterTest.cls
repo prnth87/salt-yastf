@@ -7,31 +7,31 @@ private class FieldFilterTest {
     BindContext ctx = new BindContext();
 
     String s1 = FieldFilter.equals(Account.Name, 'Acme').render(ctx);
-    System.assertEquals('Name = :__salt_p0', s1);
-    System.assertEquals('Acme', ctx.bindMap.get('__salt_p0'));
+    System.assertEquals('Name = :salt_p0', s1);
+    System.assertEquals('Acme', ctx.bindMap.get('salt_p0'));
 
     String s2 = FieldFilter.notEquals(Account.Name, 'Acme').render(ctx);
-    System.assertEquals('Name != :__salt_p1', s2);
+    System.assertEquals('Name != :salt_p1', s2);
 
     String s3 = FieldFilter.lt(Account.NumberOfEmployees, 100).render(ctx);
-    System.assertEquals('NumberOfEmployees < :__salt_p2', s3);
+    System.assertEquals('NumberOfEmployees < :salt_p2', s3);
 
     String s4 = FieldFilter.le(Account.NumberOfEmployees, 100).render(ctx);
-    System.assertEquals('NumberOfEmployees <= :__salt_p3', s4);
+    System.assertEquals('NumberOfEmployees <= :salt_p3', s4);
 
     String s5 = FieldFilter.gt(Account.NumberOfEmployees, 10).render(ctx);
-    System.assertEquals('NumberOfEmployees > :__salt_p4', s5);
+    System.assertEquals('NumberOfEmployees > :salt_p4', s5);
 
     String s6 = FieldFilter.ge(Account.NumberOfEmployees, 10).render(ctx);
-    System.assertEquals('NumberOfEmployees >= :__salt_p5', s6);
+    System.assertEquals('NumberOfEmployees >= :salt_p5', s6);
 
     Set<Object> ids = new Set<Object>{ 'Acme', 'Other' };
     String s7 = FieldFilter.inSet(Account.Name, ids).render(ctx);
-    System.assertEquals('Name IN :__salt_p6', s7);
-    System.assertEquals(ids, ctx.bindMap.get('__salt_p6'));
+    System.assertEquals('Name IN :salt_p6', s7);
+    System.assertEquals(ids, ctx.bindMap.get('salt_p6'));
 
     String s8 = FieldFilter.notInSet(Account.Name, ids).render(ctx);
-    System.assertEquals('Name NOT IN :__salt_p7', s8);
+    System.assertEquals('Name NOT IN :salt_p7', s8);
   }
 
   // ---- B.12: Date field with Datetime bind on ordered op rejects ----
@@ -87,11 +87,11 @@ private class FieldFilterTest {
     System.assert(true);
   }
 
-  // ---- B.16: reserved __salt_ prefix — synthetic ----
+  // ---- B.16: reserved salt_ prefix — synthetic ----
 
   @isTest
   static void fieldFilter_reservedSaltPrefix_rejectsAtFactory() {
-    // Standard schema cannot expose a field name beginning with __salt_,
+    // Standard schema cannot expose a field name beginning with salt_,
     // and Apex does not allow constructing a synthetic SObjectField. The
     // rejection branch is enforced by string prefix check; documenting.
     System.assert(true);
@@ -105,7 +105,7 @@ private class FieldFilterTest {
     FieldFilter ff = FieldFilter.equals(Account.OwnerId, userId);
     System.assertNotEquals(null, ff);
     String s = ff.render(new BindContext());
-    System.assertEquals('OwnerId = :__salt_p0', s);
+    System.assertEquals('OwnerId = :salt_p0', s);
   }
 
   // ---- B.18: Id 15-vs-18 canonical equalsPredicate ----

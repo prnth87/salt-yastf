@@ -5,8 +5,8 @@ private class BindContextTest {
     BindContext ctx = new BindContext();
     String name1 = ctx.nextChildBindName();
     String name2 = ctx.nextChildBindName();
-    System.assertEquals('__salt_c0', name1);
-    System.assertEquals('__salt_c1', name2);
+    System.assertEquals('salt_c0', name1);
+    System.assertEquals('salt_c1', name2);
   }
 
   @IsTest
@@ -19,8 +19,8 @@ private class BindContextTest {
   @IsTest
   static void bindContext_predicateBindNameSequence() {
     BindContext ctx = new BindContext();
-    System.assertEquals('__salt_p0', ctx.nextPredicateBindName());
-    System.assertEquals('__salt_p1', ctx.nextPredicateBindName());
-    System.assertEquals('__salt_p2', ctx.nextPredicateBindName());
+    System.assertEquals('salt_p0', ctx.nextPredicateBindName());
+    System.assertEquals('salt_p1', ctx.nextPredicateBindName());
+    System.assertEquals('salt_p2', ctx.nextPredicateBindName());
   }
 }

@@ -133,19 +133,88 @@ Account:
       dml_target: Opportunity (Description)
       business_owner: Finance/AR
 
+    - handler: AccountBillingContactReviewHandler
+      order: 30
+      interfaces: [IRecordFilter, IQueryAware, IDmlAware]
+      combo: 13  # IRecordFilter + IQueryAware + IDmlAware
+      filter: FieldChanged(Rating)
+      description: >
+        When Account.Rating changes, queries Contacts in the Billing
+        department and creates a compliance review Task per contact.
+        First handler to use FieldFilter predicates in whereFilter().
+      query_key: Contact|AccountId
+      query_predicate: FieldFilter.equals(Contact.Department, 'Billing')
+      dml_target: Task (new)
+      business_owner: Legal/Compliance
+
+    - handler: AccountShippingContactAlertHandler
+      order: 35
+      interfaces: [IRecordFilter, IQueryAware, IDmlAware]
+      combo: 13  # IRecordFilter + IQueryAware + IDmlAware
+      filter: FieldChanged(Rating)
+      description: >
+        When Account.Rating changes, queries Contacts in the Shipping
+        department and creates a logistics alert Task per contact.
+        Same merge key as BillingContactReview — different predicate
+        triggers OR-merge and structural hash comparison.
+      query_key: Contact|AccountId
+      query_predicate: FieldFilter.equals(Contact.Department, 'Shipping')
+      dml_target: Task (new)
+      business_owner: Logistics
+
+    - handler: AccountAllContactNotifyHandler
+      order: 40
+      interfaces: [IRecordFilter, IQueryAware, IDmlAware]
+      combo: 13  # IRecordFilter + IQueryAware + IDmlAware
+      filter: FieldChanged(Rating)
+      description: >
+        When Account.Rating changes, counts all child Contacts (no
+        department filter) and stamps Account.Description with the
+        count. No whereFilter — exercises MERGE_SUBSUME against
+        the filtered handlers on the same merge key.
+      query_key: Contact|AccountId
+      query_predicate: ~  # no predicate — subsumption
+      dml_target: Account (Description)
+      business_owner: Sales Operations
+
+    - handler: AccountTaggedDeptContactHandler
+      order: 45
+      interfaces: [IRecordFilter, IQueryAware, IDmlAware]
+      combo: 13  # IRecordFilter + IQueryAware + IDmlAware
+      filter: FieldChanged(Rating)
+      description: >
+        When Account.Rating changes, queries Billing and Engineering
+        contacts via two tagged QueryRequests on the same merge key.
+        First handler to use .tag() for per-handler multi-request
+        provenance isolation.
+      query_key: Contact|AccountId
+      query_predicate: >
+        tag='billing':  FieldFilter.equals(Contact.Department, 'Billing')
+        tag='engineering': FieldFilter.equals(Contact.Department, 'Engineering')
+      dml_target: Task (new)
+      business_owner: HR/Cross-Department
+
   merge_groups:
     Contact|AccountId:
       handlers:
         [
           AccountContactCascadeHandler,
           AccountOwnerReassignHandler,
-          AccountDoNotContactHandler
+          AccountDoNotContactHandler,
+          AccountBillingContactReviewHandler,
+          AccountShippingContactAlertHandler,
+          AccountAllContactNotifyHandler,
+          AccountTaggedDeptContactHandler
         ]
-      count: 3
+      count: 7
       note: >
-        Three independent teams (data quality, sales ops, compliance) each need
-        Contact data when Account changes. Owned by different departments with
-        no coordination — SALT merges their queries automatically.
+        Seven handlers (3 original + 4 predicate) share the Contact|AccountId
+        merge key. AccountAllContactNotifyHandler has no predicate (empty
+        filter), which escalates the merge group to SUBSUME — 1 SOQL with
+        no WHERE predicate, in-memory matcher re-filters per handler.
+        AccountBillingContactReviewHandler and AccountTaggedDeptContactHandler
+        tag='billing' share identical predicates (Department='Billing'),
+        exercising the structural hash identity-merge path.
     Opportunity|AccountId:
       handlers:
         [AccountOpportunityCascadeHandler, AccountCreditHoldOppFreezeHandler]
@@ -457,8 +526,15 @@ Opportunity:
 # ═══════════════════════════════════════════════════════════════════
 # Query Merge Summary
 # ═══════════════════════════════════════════════════════════════════
-# Total query-declaring handlers: 15
-# Total merge keys: 5 distinct keys
-# Total queries without merge: 15
-# Total queries with SALT merge: 6 (1 CMDT + 5 merged handler queries)
-# Merge savings: 9 SOQL per full cascade transaction
+# Total query-declaring handlers: 19 (15 original + 4 predicate)
+# Total merge keys: 5 distinct keys (unchanged — new handlers share existing Contact|AccountId)
+# Total queries without merge: 20 (15 original + 5 from predicate handlers)
+#   Note: AccountTaggedDeptContactHandler contributes 2 queries (tagged billing + engineering)
+# Total queries with SALT merge: 6 (1 CMDT + 5 merged handler queries, unchanged)
+#   The 4 new predicate handlers merge into the existing Contact|AccountId group
+# Merge savings: 14 SOQL per full cascade transaction (was 9)
+#
+# Predicate Scenario (Account AfterUpdate, Rating change only):
+#   SALT: 1 SOQL (all 7 Contact|AccountId handlers merge via SUBSUME)
+#   fflib/TAF/O'Hara: 5 SOQL (1 per handler query, no cross-handler merging)
+#   See docs/benchmarks/predicate-benchmark-report.md for measured comparison
